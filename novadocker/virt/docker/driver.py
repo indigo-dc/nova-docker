@@ -466,8 +466,7 @@ class DockerDriver(driver.ComputeDriver):
 
     def _start_container(self, container_id, instance, network_info=None):
         binds = self._get_key_binds(container_id, instance)
-        dns = self._extract_dns_entries(network_info)
-        self.docker.start(container_id, binds=binds, dns=dns)
+        self.docker.start(container_id, binds=binds)
 
         if not network_info:
             return
@@ -510,6 +509,7 @@ class DockerDriver(driver.ComputeDriver):
             'mem_limit': self._get_memory_limit_bytes(instance),
             'cpu_shares': self._get_cpu_shares(instance),
             'network_disabled': True,
+            'dns': self._extract_dns_entries(network_info),
             'privileged': CONF.docker.privileged
         }
 
@@ -629,8 +629,7 @@ class DockerDriver(driver.ComputeDriver):
             return
 
         binds = self._get_key_binds(container_id, instance)
-        dns = self._extract_dns_entries(network_info)
-        self.docker.start(container_id, binds=binds, dns=dns)
+        self.docker.start(container_id, binds=binds)
         try:
             if network_info:
                 self.plug_vifs(instance, network_info)
@@ -646,8 +645,7 @@ class DockerDriver(driver.ComputeDriver):
         if not container_id:
             return
         binds = self._get_key_binds(container_id, instance)
-        dns = self._extract_dns_entries(network_info)
-        self.docker.start(container_id, binds=binds, dns=dns)
+        self.docker.start(container_id, binds=binds)
         if not network_info:
             return
         try:
