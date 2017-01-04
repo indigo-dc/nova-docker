@@ -438,12 +438,13 @@ class DockerDriver(driver.ComputeDriver):
                             dns.append(dns_entry['address'])
         return dns if dns else None
 
-    def _get_key_binds(self, container_id, instance):
+    def _get_key_binds(self, instance):
         binds = None
         # Handles the key injection.
         if CONF.docker.inject_key and instance.get('key_data'):
             key = str(instance['key_data'])
-            mount_origin = self._inject_key(container_id, key)
+            self._inject_key(instance, key)
+            mount_origin = self._get_ssh_key_dir(instance)
             binds = {mount_origin: {'bind': '/root/.ssh', 'ro': True}}
         return binds
 
@@ -465,8 +466,7 @@ class DockerDriver(driver.ComputeDriver):
                 for vif in network_info if vif.get('active', True) is False]
 
     def _start_container(self, container_id, instance, network_info=None):
-        binds = self._get_key_binds(container_id, instance)
-        self.docker.start(container_id, binds=binds)
+        self.docker.start(container_id)
 
         if not network_info:
             return
@@ -509,6 +509,7 @@ class DockerDriver(driver.ComputeDriver):
             'mem_limit': self._get_memory_limit_bytes(instance),
             'cpu_shares': self._get_cpu_shares(instance),
             'network_disabled': True,
+            'binds': self._get_key_binds(instance),
             'dns': self._extract_dns_entries(network_info),
             'privileged': CONF.docker.privileged
         }
@@ -536,10 +537,11 @@ class DockerDriver(driver.ComputeDriver):
 
         self._start_container(container_id, instance, network_info)
 
-    def _inject_key(self, id, key):
-        if isinstance(id, dict):
-            id = id.get('id')
-        sshdir = os.path.join(CONF.instances_path, id, '.ssh')
+    def _get_ssh_key_dir(self, instance):
+        return os.path.join(CONF.instances_path, instance['uuid'], 'ssh')
+
+    def _inject_key(self, instance, key):
+        sshdir = self._get_ssh_key_dir(instance)
         key_data = ''.join([
             '\n',
             '# The following ssh key was injected by Nova',
@@ -553,12 +555,9 @@ class DockerDriver(driver.ComputeDriver):
             f.write(key_data)
         os.chmod(sshdir, 0o700)
         os.chmod(keys_file, 0o600)
-        return sshdir
 
-    def _cleanup_key(self, instance, id):
-        if isinstance(id, dict):
-            id = id.get('id')
-        dir = os.path.join(CONF.instances_path, id)
+    def _cleanup_key(self, instance):
+        dir = self._get_ssh_key_dir(instance)
         if os.path.exists(dir):
             LOG.info(_LI('Deleting instance files %s'), dir,
                      instance=instance)
@@ -610,7 +609,7 @@ class DockerDriver(driver.ComputeDriver):
         network.teardown_network(container_id)
         self.unplug_vifs(instance, network_info)
         if CONF.docker.inject_key:
-            self._cleanup_key(instance, container_id)
+            self._cleanup_key(instance)
 
     def reboot(self, context, instance, network_info, reboot_type,
                block_device_info=None, bad_volumes_callback=None):
@@ -628,8 +627,7 @@ class DockerDriver(driver.ComputeDriver):
                         exc_info=True)
             return
 
-        binds = self._get_key_binds(container_id, instance)
-        self.docker.start(container_id, binds=binds)
+        self.docker.start(container_id)
         try:
             if network_info:
                 self.plug_vifs(instance, network_info)
@@ -644,8 +642,7 @@ class DockerDriver(driver.ComputeDriver):
         container_id = self._get_container_id(instance)
         if not container_id:
             return
-        binds = self._get_key_binds(container_id, instance)
-        self.docker.start(container_id, binds=binds)
+        self.docker.start(container_id)
         if not network_info:
             return
         try:
