@@ -1,5 +1,5 @@
 ===============================
-nova-docker
+(DEPRECATED) nova-docker
 ===============================
 
 Docker driver for OpenStack Nova.
